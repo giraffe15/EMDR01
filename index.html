@@ -6,12 +6,12 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="theme-color" content="#1a1a2e" />
+  <meta name="theme-color" content="#1c1c1c" />
   <title>EMDR</title>
   <link rel="manifest" href="manifest.json" />
   <style>
     *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1a2e; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #1c1c1c; }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   </style>
 </head>
@@ -44,6 +44,7 @@
       const [speedMs, setSpeedMs] = useState(1200);
       const [audioEnabled, setAudioEnabled] = useState(true);
       const [uiVisible, setUiVisible] = useState(false);
+      const [showVersion, setShowVersion] = useState(false);
       const [showFull, setShowFull] = useState(false);
 
       const [fullPhase, setFullPhase] = useState("grounding");
@@ -115,24 +116,8 @@
         const W = canvas.width;
         const H = canvas.height;
 
-        if (elapsed >= spd) {
-          startTimeRef.current = timestamp;
-          if (m === "random") {
-            randFromX.current = randToX.current;
-            randFromY.current = randToY.current;
-            randToX.current = 0.08 + Math.random() * 0.84;
-            randToY.current = 0.08 + Math.random() * 0.84;
-            playTone(Math.random() > 0.5 ? "right" : "left");
-          } else {
-            const wasForward = directionRef.current === 1;
-            directionRef.current *= -1;
-            playTone(wasForward ? "right" : "left");
-          }
-          animRef.current = requestAnimationFrame(animate);
-          return;
-        }
-
-        const progress = elapsed / spd;
+        // clamp progress to [0,1] — never exceed end position
+        const progress = Math.min(elapsed / spd, 1);
         let dotXpx, dotYpx;
 
         if (m === "random") {
@@ -148,8 +133,8 @@
           dotYpx = H * 0.5;
         }
 
-        // clear with background color
-        ctx.fillStyle = '#1a1a2e';
+        // draw
+        ctx.fillStyle = '#1c1c1c';
         ctx.fillRect(0, 0, W, H);
 
         // track line
@@ -187,6 +172,24 @@
         ctx.fillStyle = dotGrad;
         ctx.fill();
 
+
+
+        // flip direction after drawing
+        if (elapsed >= spd) {
+          startTimeRef.current = timestamp;
+          if (m === "random") {
+            randFromX.current = randToX.current;
+            randFromY.current = randToY.current;
+            randToX.current = 0.08 + Math.random() * 0.84;
+            randToY.current = 0.08 + Math.random() * 0.84;
+            playTone(Math.random() > 0.5 ? "right" : "left");
+          } else {
+            const wasForward = directionRef.current === 1;
+            directionRef.current *= -1;
+            playTone(wasForward ? "right" : "left");
+          }
+        }
+
         animRef.current = requestAnimationFrame(animate);
       }, [playTone]);
 
@@ -200,10 +203,23 @@
         return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
       }, [running, animate]);
 
-      const handleTouch = useCallback(() => {
+      const longPressRef = useRef(null);
+      const showVersionRef = useRef(false);
+      useEffect(() => { showVersionRef.current = showVersion; }, [showVersion]);
+
+      const handleTouchStart = useCallback(() => {
         setUiVisible(true);
         if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
         hideTimerRef.current = setTimeout(() => setUiVisible(false), 3000);
+        // long press: 800ms
+        longPressRef.current = setTimeout(() => {
+          setShowVersion(true);
+          setTimeout(() => setShowVersion(false), 3000);
+        }, 800);
+      }, []);
+
+      const handleTouchEnd = useCallback(() => {
+        if (longPressRef.current) clearTimeout(longPressRef.current);
       }, []);
 
       useEffect(() => () => { if (hideTimerRef.current) clearTimeout(hideTimerRef.current); }, []);
@@ -390,8 +406,10 @@
 
       return html`
         <div
-          onMouseDown=${handleTouch}
-          onTouchStart=${handleTouch}
+          onMouseDown=${handleTouchStart}
+          onMouseUp=${handleTouchEnd}
+          onTouchStart=${handleTouchStart}
+          onTouchEnd=${handleTouchEnd}
           style=${{ width:"100vw", height:"100vh", background:"#1a1a2e", overflow:"hidden", position:"relative", cursor:"none", userSelect:"none" }}
         >
           <canvas ref=${canvasRef} style=${{ position:"absolute", inset:0, width:"100%", height:"100%" }}></canvas>
@@ -399,8 +417,8 @@
             <div style=${{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
               <div style=${{ fontSize:"11px", letterSpacing:"3px", color:"rgba(126,184,212,0.4)", textTransform:"uppercase" }}>EMDR</div>
               <button
-                onMouseDown=${e => { e.stopPropagation(); setRunning(r => !r); handleTouch(); }}
-                onTouchStart=${e => { e.stopPropagation(); setRunning(r => !r); handleTouch(); }}
+                onMouseDown=${e => { e.stopPropagation(); setRunning(r => !r); handleTouchStart(); }}
+                onTouchStart=${e => { e.stopPropagation(); setRunning(r => !r); handleTouchStart(); }}
                 style=${{ background:running?"rgba(220,100,100,0.12)":"rgba(126,184,212,0.15)", border:"1px solid "+(running?"rgba(220,100,100,0.3)":"rgba(126,184,212,0.3)"), color:running?"#e89090":"#7eb8d4", padding:"8px 18px", borderRadius:"20px", cursor:"pointer", fontSize:"13px" }}
               >${running ? "⏸ 停止" : "▶ 再開"}</button>
             </div>
@@ -408,20 +426,20 @@
               <div style=${{ display:"flex", gap:"8px", justifyContent:"center" }}>
                 ${SPEEDS.map(s => html`
                   <button key=${s.ms}
-                    onMouseDown=${e => { e.stopPropagation(); setSpeedMs(s.ms); handleTouch(); }}
-                    onTouchStart=${e => { e.stopPropagation(); setSpeedMs(s.ms); handleTouch(); }}
+                    onMouseDown=${e => { e.stopPropagation(); setSpeedMs(s.ms); handleTouchStart(); }}
+                    onTouchStart=${e => { e.stopPropagation(); setSpeedMs(s.ms); handleTouchStart(); }}
                     style=${{ padding:"8px 20px", background:speedMs===s.ms?"rgba(126,184,212,0.2)":"rgba(255,255,255,0.05)", border:"1px solid "+(speedMs===s.ms?"rgba(126,184,212,0.4)":"rgba(255,255,255,0.1)"), borderRadius:"20px", color:speedMs===s.ms?"#7eb8d4":"rgba(126,184,212,0.4)", cursor:"pointer", fontSize:"13px" }}
                   >${s.label}</button>`)}
               </div>
               <div style=${{ display:"flex", gap:"8px", justifyContent:"center", flexWrap:"wrap" }}>
                 <button
-                  onMouseDown=${e => { e.stopPropagation(); setMode(nextMode); startTimeRef.current=null; handleTouch(); }}
-                  onTouchStart=${e => { e.stopPropagation(); setMode(nextMode); startTimeRef.current=null; handleTouch(); }}
+                  onMouseDown=${e => { e.stopPropagation(); setMode(nextMode); startTimeRef.current=null; handleTouchStart(); }}
+                  onTouchStart=${e => { e.stopPropagation(); setMode(nextMode); startTimeRef.current=null; handleTouchStart(); }}
                   style=${{ padding:"8px 18px", background:"rgba(126,184,212,0.12)", border:"1px solid rgba(126,184,212,0.28)", borderRadius:"20px", color:"#7eb8d4", cursor:"pointer", fontSize:"13px" }}
                 >${modeLabel}に切替</button>
                 <button
-                  onMouseDown=${e => { e.stopPropagation(); setAudioEnabled(a => !a); handleTouch(); }}
-                  onTouchStart=${e => { e.stopPropagation(); setAudioEnabled(a => !a); handleTouch(); }}
+                  onMouseDown=${e => { e.stopPropagation(); setAudioEnabled(a => !a); handleTouchStart(); }}
+                  onTouchStart=${e => { e.stopPropagation(); setAudioEnabled(a => !a); handleTouchStart(); }}
                   style=${{ padding:"8px 18px", background:audioEnabled?"rgba(126,184,212,0.12)":"rgba(255,255,255,0.04)", border:"1px solid "+(audioEnabled?"rgba(126,184,212,0.3)":"rgba(255,255,255,0.1)"), borderRadius:"20px", color:audioEnabled?"#7eb8d4":"rgba(126,184,212,0.3)", cursor:"pointer", fontSize:"13px" }}
                 >${audioEnabled ? "🎧 音あり" : "🔇 音なし"}</button>
                 <button
@@ -431,6 +449,7 @@
                 >フルセッション</button>
               </div>
               <p style=${{ textAlign:"center", fontSize:"11px", color:"rgba(126,184,212,0.18)", margin:0 }}>画面から離すとUIが消えます</p>
+              <p style=${{ textAlign:"center", fontSize:"10px", color:"rgba(126,184,212,0.15)", margin:0 }}>v1.0</p>
             </div>
           </div>
         </div>`;
