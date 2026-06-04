@@ -2,7 +2,7 @@
   "name": "EMDR",
   "short_name": "EMDR",
   "start_url": "./index.html",
-  "display": "standalone",
+  "display": "fullscreen",
   "background_color": "#050d16",
   "theme_color": "#050d16",
   "icons": [
