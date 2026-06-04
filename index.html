@@ -106,23 +106,12 @@
         if (!startTimeRef.current) startTimeRef.current = timestamp;
         const elapsed = timestamp - startTimeRef.current;
         const spd = speedMsRef.current;
-        const progress = Math.min((elapsed % spd) / spd, 1);
         const m = modeRef.current;
 
-        if (m === "random") {
-          const x = randFromX.current + (randToX.current - randFromX.current) * progress;
-          const y = randFromY.current + (randToY.current - randFromY.current) * progress;
-          setDotX(x);
-          setDotY(y);
-        } else {
-          const pos = directionRef.current === 1 ? 5 + progress * 90 : 95 - progress * 90;
-          setDotPos(pos);
-        }
-
         if (elapsed >= spd) {
+          // reached end of sweep — reset and flip
           startTimeRef.current = timestamp;
           if (m === "random") {
-            // arrived at target → set new target from current pos
             randFromX.current = randToX.current;
             randFromY.current = randToY.current;
             randToX.current = 8 + Math.random() * 84;
@@ -133,7 +122,20 @@
             directionRef.current *= -1;
             playTone(wasForward ? "right" : "left");
           }
+          animRef.current = requestAnimationFrame(animate);
+          return;
         }
+
+        const progress = elapsed / spd;
+
+        if (m === "random") {
+          setDotX(randFromX.current + (randToX.current - randFromX.current) * progress);
+          setDotY(randFromY.current + (randToY.current - randFromY.current) * progress);
+        } else {
+          const pos = directionRef.current === 1 ? 5 + progress * 90 : 95 - progress * 90;
+          setDotPos(pos);
+        }
+
         animRef.current = requestAnimationFrame(animate);
       }, [playTone]);
 
