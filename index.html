@@ -6,12 +6,12 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="theme-color" content="#050d16" />
+  <meta name="theme-color" content="#1a1a2e" />
   <title>EMDR</title>
   <link rel="manifest" href="manifest.json" />
   <style>
     *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: #050d16; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1a2e; }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   </style>
 </head>
@@ -102,20 +102,26 @@
         } catch(e) {}
       }, []);
 
+      const canvasRef = useRef(null);
+
       const animate = useCallback((timestamp) => {
         if (!startTimeRef.current) startTimeRef.current = timestamp;
         const elapsed = timestamp - startTimeRef.current;
         const spd = speedMsRef.current;
         const m = modeRef.current;
+        const canvas = canvasRef.current;
+        if (!canvas) { animRef.current = requestAnimationFrame(animate); return; }
+        const ctx = canvas.getContext('2d');
+        const W = canvas.width;
+        const H = canvas.height;
 
         if (elapsed >= spd) {
-          // reached end of sweep — reset and flip
           startTimeRef.current = timestamp;
           if (m === "random") {
             randFromX.current = randToX.current;
             randFromY.current = randToY.current;
-            randToX.current = 8 + Math.random() * 84;
-            randToY.current = 8 + Math.random() * 84;
+            randToX.current = 0.08 + Math.random() * 0.84;
+            randToY.current = 0.08 + Math.random() * 0.84;
             playTone(Math.random() > 0.5 ? "right" : "left");
           } else {
             const wasForward = directionRef.current === 1;
@@ -127,14 +133,59 @@
         }
 
         const progress = elapsed / spd;
+        let dotXpx, dotYpx;
 
         if (m === "random") {
-          setDotX(randFromX.current + (randToX.current - randFromX.current) * progress);
-          setDotY(randFromY.current + (randToY.current - randFromY.current) * progress);
+          dotXpx = (randFromX.current + (randToX.current - randFromX.current) * progress) * W;
+          dotYpx = (randFromY.current + (randToY.current - randFromY.current) * progress) * H;
+        } else if (m === "vertical") {
+          const pos = directionRef.current === 1 ? 0.05 + progress * 0.9 : 0.95 - progress * 0.9;
+          dotXpx = W * 0.5;
+          dotYpx = H * pos;
         } else {
-          const pos = directionRef.current === 1 ? 5 + progress * 90 : 95 - progress * 90;
-          setDotPos(pos);
+          const pos = directionRef.current === 1 ? 0.05 + progress * 0.9 : 0.95 - progress * 0.9;
+          dotXpx = W * pos;
+          dotYpx = H * 0.5;
         }
+
+        // clear with background color
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(0, 0, W, H);
+
+        // track line
+        ctx.beginPath();
+        if (m === "vertical") {
+          ctx.moveTo(W/2, H*0.05); ctx.lineTo(W/2, H*0.95);
+        } else if (m === "horizontal") {
+          ctx.moveTo(W*0.05, H/2); ctx.lineTo(W*0.95, H/2);
+        }
+        const grad = m === "vertical"
+          ? ctx.createLinearGradient(0, H*0.05, 0, H*0.95)
+          : ctx.createLinearGradient(W*0.05, 0, W*0.95, 0);
+        grad.addColorStop(0, 'transparent');
+        grad.addColorStop(0.5, 'rgba(126,184,212,0.12)');
+        grad.addColorStop(1, 'transparent');
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // glow
+        const glow = ctx.createRadialGradient(dotXpx, dotYpx, 0, dotXpx, dotYpx, 32);
+        glow.addColorStop(0, 'rgba(126,184,212,0.5)');
+        glow.addColorStop(1, 'transparent');
+        ctx.beginPath();
+        ctx.arc(dotXpx, dotYpx, 32, 0, Math.PI*2);
+        ctx.fillStyle = glow;
+        ctx.fill();
+
+        // dot
+        const dotGrad = ctx.createRadialGradient(dotXpx-4, dotYpx-4, 1, dotXpx, dotYpx, 13);
+        dotGrad.addColorStop(0, '#c8e8f8');
+        dotGrad.addColorStop(1, '#3a8fb8');
+        ctx.beginPath();
+        ctx.arc(dotXpx, dotYpx, 13, 0, Math.PI*2);
+        ctx.fillStyle = dotGrad;
+        ctx.fill();
 
         animRef.current = requestAnimationFrame(animate);
       }, [playTone]);
@@ -323,32 +374,27 @@
           </div>`;
       }
 
-      const isRandom = mode === "random";
-      const isVertical = mode === "vertical";
-
-      const dotStyleObj = isRandom
-        ? { position:"absolute", left:dotX+"%", top:dotY+"%", transform:"translate(-50%,-50%)" }
-        : isVertical
-          ? { position:"absolute", left:"50%", top:dotPos+"%", transform:"translate(-50%,-50%)" }
-          : { position:"absolute", left:dotPos+"%", top:"50%", transform:"translate(-50%,-50%)" };
-
-      const trackStyleObj = isRandom
-        ? null
-        : isVertical
-          ? { position:"absolute", top:"5%", bottom:"5%", left:"50%", width:"1px", transform:"translateX(-50%)", background:"linear-gradient(180deg,transparent,rgba(126,184,212,0.08),transparent)" }
-          : { position:"absolute", left:"5%", right:"5%", top:"50%", height:"1px", transform:"translateY(-50%)", background:"linear-gradient(90deg,transparent,rgba(126,184,212,0.08),transparent)" };
-
       const modeLabel = mode === "horizontal" ? "↕ 縦" : mode === "vertical" ? "🎲 ランダム" : "↔ 横";
       const nextMode = mode === "horizontal" ? "vertical" : mode === "vertical" ? "random" : "horizontal";
+
+      // resize canvas on mount/resize
+      useEffect(() => {
+        const resize = () => {
+          const c = canvasRef.current;
+          if (c) { c.width = window.innerWidth; c.height = window.innerHeight; }
+        };
+        resize();
+        window.addEventListener('resize', resize);
+        return () => window.removeEventListener('resize', resize);
+      }, []);
 
       return html`
         <div
           onMouseDown=${handleTouch}
           onTouchStart=${handleTouch}
-          style=${{ width:"100vw", height:"100vh", background:"#050d16", display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", position:"relative", cursor:"none", userSelect:"none" }}
+          style=${{ width:"100vw", height:"100vh", background:"#1a1a2e", overflow:"hidden", position:"relative", cursor:"none", userSelect:"none" }}
         >
-          ${!isRandom && html`<div style=${trackStyleObj}></div>`}
-          <div style=${{ ...dotStyleObj, width:"28px", height:"28px", borderRadius:"50%", background:"radial-gradient(circle at 35% 35%, #c8e8f8, #3a8fb8)", boxShadow:"0 0 32px #7eb8d4bb, 0 0 8px #7eb8d4", zIndex:10 }}></div>
+          <canvas ref=${canvasRef} style=${{ position:"absolute", inset:0, width:"100%", height:"100%" }}></canvas>
           <div style=${{ position:"absolute", inset:0, display:"flex", flexDirection:"column", justifyContent:"space-between", padding:"env(safe-area-inset-top,20px) 24px env(safe-area-inset-bottom,24px)", opacity:uiVisible?1:0, transition:"opacity 0.4s ease", pointerEvents:uiVisible?"auto":"none", zIndex:20 }}>
             <div style=${{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
               <div style=${{ fontSize:"11px", letterSpacing:"3px", color:"rgba(126,184,212,0.4)", textTransform:"uppercase" }}>EMDR</div>
