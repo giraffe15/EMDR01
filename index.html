@@ -36,6 +36,9 @@
 
     function EMDRApp() {
       const [dotPos, setDotPos] = useState(50);
+      const [dotX, setDotX] = useState(50);
+      const [dotY, setDotY] = useState(50);
+      const [mode, setMode] = useState("horizontal"); // horizontal | vertical | random
       const [vertical, setVertical] = useState(false);
       const [running, setRunning] = useState(true);
       const [speedMs, setSpeedMs] = useState(1200);
@@ -61,10 +64,17 @@
       const hideTimerRef = useRef(null);
       const breathTimerRef = useRef(null);
       const verticalRef = useRef(false);
+      const modeRef = useRef("horizontal");
       const speedMsRef = useRef(1200);
       const audioEnabledRef = useRef(true);
+      // random mode
+      const randFromX = useRef(50);
+      const randFromY = useRef(50);
+      const randToX = useRef(90);
+      const randToY = useRef(50);
 
       useEffect(() => { verticalRef.current = vertical; }, [vertical]);
+      useEffect(() => { modeRef.current = mode; }, [mode]);
       useEffect(() => { speedMsRef.current = speedMs; }, [speedMs]);
       useEffect(() => { audioEnabledRef.current = audioEnabled; }, [audioEnabled]);
 
@@ -96,14 +106,33 @@
         if (!startTimeRef.current) startTimeRef.current = timestamp;
         const elapsed = timestamp - startTimeRef.current;
         const spd = speedMsRef.current;
-        const progress = (elapsed % spd) / spd;
-        const pos = directionRef.current === 1 ? 5 + progress * 90 : 95 - progress * 90;
-        setDotPos(pos);
+        const progress = Math.min((elapsed % spd) / spd, 1);
+        const m = modeRef.current;
+
+        if (m === "random") {
+          const x = randFromX.current + (randToX.current - randFromX.current) * progress;
+          const y = randFromY.current + (randToY.current - randFromY.current) * progress;
+          setDotX(x);
+          setDotY(y);
+        } else {
+          const pos = directionRef.current === 1 ? 5 + progress * 90 : 95 - progress * 90;
+          setDotPos(pos);
+        }
+
         if (elapsed >= spd) {
           startTimeRef.current = timestamp;
-          const wasForward = directionRef.current === 1;
-          directionRef.current *= -1;
-          playTone(wasForward ? "right" : "left");
+          if (m === "random") {
+            // arrived at target → set new target from current pos
+            randFromX.current = randToX.current;
+            randFromY.current = randToY.current;
+            randToX.current = 8 + Math.random() * 84;
+            randToY.current = 8 + Math.random() * 84;
+            playTone(Math.random() > 0.5 ? "right" : "left");
+          } else {
+            const wasForward = directionRef.current === 1;
+            directionRef.current *= -1;
+            playTone(wasForward ? "right" : "left");
+          }
         }
         animRef.current = requestAnimationFrame(animate);
       }, [playTone]);
@@ -292,13 +321,23 @@
           </div>`;
       }
 
-      const dotStyleObj = vertical
-        ? { position:"absolute", left:"50%", top:dotPos+"%", transform:"translate(-50%,-50%)" }
-        : { position:"absolute", left:dotPos+"%", top:"50%", transform:"translate(-50%,-50%)" };
+      const isRandom = mode === "random";
+      const isVertical = mode === "vertical";
 
-      const trackStyleObj = vertical
-        ? { position:"absolute", top:"5%", bottom:"5%", left:"50%", width:"1px", transform:"translateX(-50%)", background:"linear-gradient(180deg,transparent,rgba(126,184,212,0.08),transparent)" }
-        : { position:"absolute", left:"5%", right:"5%", top:"50%", height:"1px", transform:"translateY(-50%)", background:"linear-gradient(90deg,transparent,rgba(126,184,212,0.08),transparent)" };
+      const dotStyleObj = isRandom
+        ? { position:"absolute", left:dotX+"%", top:dotY+"%", transform:"translate(-50%,-50%)" }
+        : isVertical
+          ? { position:"absolute", left:"50%", top:dotPos+"%", transform:"translate(-50%,-50%)" }
+          : { position:"absolute", left:dotPos+"%", top:"50%", transform:"translate(-50%,-50%)" };
+
+      const trackStyleObj = isRandom
+        ? null
+        : isVertical
+          ? { position:"absolute", top:"5%", bottom:"5%", left:"50%", width:"1px", transform:"translateX(-50%)", background:"linear-gradient(180deg,transparent,rgba(126,184,212,0.08),transparent)" }
+          : { position:"absolute", left:"5%", right:"5%", top:"50%", height:"1px", transform:"translateY(-50%)", background:"linear-gradient(90deg,transparent,rgba(126,184,212,0.08),transparent)" };
+
+      const modeLabel = mode === "horizontal" ? "↕ 縦" : mode === "vertical" ? "🎲 ランダム" : "↔ 横";
+      const nextMode = mode === "horizontal" ? "vertical" : mode === "vertical" ? "random" : "horizontal";
 
       return html`
         <div
@@ -306,7 +345,7 @@
           onTouchStart=${handleTouch}
           style=${{ width:"100vw", height:"100vh", background:"#050d16", display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", position:"relative", cursor:"none", userSelect:"none" }}
         >
-          <div style=${trackStyleObj}></div>
+          ${!isRandom && html`<div style=${trackStyleObj}></div>`}
           <div style=${{ ...dotStyleObj, width:"28px", height:"28px", borderRadius:"50%", background:"radial-gradient(circle at 35% 35%, #c8e8f8, #3a8fb8)", boxShadow:"0 0 32px #7eb8d4bb, 0 0 8px #7eb8d4", zIndex:10 }}></div>
           <div style=${{ position:"absolute", inset:0, display:"flex", flexDirection:"column", justifyContent:"space-between", padding:"env(safe-area-inset-top,20px) 24px env(safe-area-inset-bottom,24px)", opacity:uiVisible?1:0, transition:"opacity 0.4s ease", pointerEvents:uiVisible?"auto":"none", zIndex:20 }}>
             <div style=${{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
@@ -328,10 +367,10 @@
               </div>
               <div style=${{ display:"flex", gap:"8px", justifyContent:"center", flexWrap:"wrap" }}>
                 <button
-                  onMouseDown=${e => { e.stopPropagation(); setVertical(v => !v); startTimeRef.current=null; handleTouch(); }}
-                  onTouchStart=${e => { e.stopPropagation(); setVertical(v => !v); startTimeRef.current=null; handleTouch(); }}
+                  onMouseDown=${e => { e.stopPropagation(); setMode(nextMode); startTimeRef.current=null; handleTouch(); }}
+                  onTouchStart=${e => { e.stopPropagation(); setMode(nextMode); startTimeRef.current=null; handleTouch(); }}
                   style=${{ padding:"8px 18px", background:"rgba(126,184,212,0.12)", border:"1px solid rgba(126,184,212,0.28)", borderRadius:"20px", color:"#7eb8d4", cursor:"pointer", fontSize:"13px" }}
-                >${vertical ? "↔ 横に切替" : "↕ 縦に切替"}</button>
+                >${modeLabel}に切替</button>
                 <button
                   onMouseDown=${e => { e.stopPropagation(); setAudioEnabled(a => !a); handleTouch(); }}
                   onTouchStart=${e => { e.stopPropagation(); setAudioEnabled(a => !a); handleTouch(); }}
